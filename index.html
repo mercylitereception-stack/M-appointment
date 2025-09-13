@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hospital Appointment Management</title>
+  <style>
+    /* Basic resets */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Arial', sans-serif;
+      background-color: #f9f9f9;
+      color: #333;
+      text-align: center;
+    }
+
+    h1 {
+      background-color: #4CAF50;
+      color: white;
+      padding: 20px;
+      font-size: 30px;
+      margin-bottom: 30px;
+    }
+
+    form, .appointments-container, .calendar-container {
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      padding: 20px;
+      margin: 20px auto;
+      width: 80%;
+      max-width: 700px;
+    }
+
+    input, textarea, button {
+      padding: 12px;
+      margin: 8px 0;
+      width: 100%;
+      font-size: 16px;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+    }
+
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 18px;
+      transition: background-color 0.3s;
+    }
+
+    button:hover {
+      background-color: #45a049;
+    }
+
+    .appointment-list {
+      margin-top: 20px;
+    }
+
+    .appointment-list li {
+      background-color: #f4f4f4;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 10px 0;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .appointment-list li .actions {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+    }
+
+    .appointment-list li .actions button {
+      background-color: #e74c3c;
+    }
+
+    .appointment-list li .actions button:hover {
+      background-color: #c0392b;
+    }
+
+    .notification {
+      display: none;
+      background-color: #ffcc00;
+      color: black;
+      padding: 15px;
+      border-radius: 5px;
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 18px;
+      z-index: 1000;
+    }
+
+    .calendar-container {
+      margin-top: 30px;
+    }
+
+    .calendar-container table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .calendar-container th, .calendar-container td {
+      padding: 10px;
+      text-align: center;
+      border: 1px solid #ddd;
+      cursor: pointer;
+    }
+
+    .calendar-container th {
+      background-color: #4CAF50;
+      color: white;
+    }
+
+    .calendar-container td {
+      background-color: #f9f9f9;
+    }
+
+    .calendar-container td:hover {
+      background-color: #e0e0e0;
+    }
+
+    .calendar-container td.selected {
+      background-color: #4CAF50;
+      color: white;
+    }
+
+    /* Modal for Notifications */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.1);
+      z-index: 1000;
+      max-width: 400px;
+      width: 80%;
+    }
+
+    .modal button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      font-size: 16px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+
+    .modal button:hover {
+      background-color: #45a049;
+    }
+    
+    /* Time Display */
+    .time-display {
+      font-size: 24px;
+      margin-top: 20px;
+      color: #4CAF50;
+    }
+  </style>
+</head>
+<body>
+  <h1>Hospital Appointment Management</h1>
+
+  <!-- Current Time -->
+  <div id="currentTime" class="time-display"></div>
+
+  <!-- Appointment Form -->
+  <form id="appointmentForm">
+    <input type="text" id="title" placeholder="Appointment Title" required>
+    <input type="date" id="date" required>
+    <input type="time" id="time" required>
+    <input type="text" id="patientName" placeholder="Patient's Name" required>
+    <input type="text" id="doctorName" placeholder="Doctor's Name" required>
+    <input type="text" id="clinicType" placeholder="Type of Clinic" required>
+    <textarea id="description" placeholder="Description" required></textarea>
+    <button type="submit">Create Appointment</button>
+  </form>
+
+  <!-- Appointment List -->
+  <div class="appointments-container" id="appointmentList"></div>
+
+  <!-- Calendar View -->
+  <div class="calendar-container" id="calendarView"></div>
+
+  <!-- Notification Popup -->
+  <div id="notification" class="notification"></div>
+
+  <!-- Modal Popup -->
+  <div id="appointmentModal" class="modal">
+    <h2>Appointment Alert</h2>
+    <p id="modalContent"></p>
+    <button onclick="closeModal()">Close</button>
+  </div>
+
+  <!-- Audio Alert -->
+  <audio id="alarmSound" src="https://www.soundjay.com/button/beep-07.wav" preload="auto"></audio>
+
+  <script>
+    let appointments = JSON.parse(localStorage.getItem('appointments')) || [];
+    let currentMonth = new Date().getMonth();
+    let currentYear = new Date().getFullYear();
+
+    // Request permission for notifications
+    if (Notification.permission !== 'granted') {
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          console.log("Notification permission granted.");
+        }
+      });
+    }
+
+    // Function to render the appointment list
+    function renderAppointmentList() {
+      const appointmentList = document.getElementById('appointmentList');
+      appointmentList.innerHTML = `<h3>Upcoming Appointments</h3>`;
+      
+      if (appointments.length === 0) {
+        appointmentList.innerHTML += '<p>No appointments scheduled.</p>';
+      } else {
+        const list = document.createElement('ul');
+        appointments.forEach((appointment, index) => {
+          const listItem = document.createElement('li');
+          listItem.innerHTML = `
+            <strong>${appointment.title}</strong>
+            <p><strong>Patient:</strong> ${appointment.patientName}</p>
+            <p><strong>Doctor:</strong> ${appointment.doctorName}</p>
+            <p><strong>Clinic:</strong> ${appointment.clinicType}</p>
+            <p><strong>Date:</strong> ${appointment.date} at ${appointment.time}</p>
+            <p>${appointment.description}</p>
+            <div class="actions">
+              <button onclick="editAppointment(${index})">Edit</button>
+              <button onclick="deleteAppointment(${index})">Delete</button>
+            </div>
+          `;
+          list.appendChild(listItem);
+        });
+        appointmentList.appendChild(list);
+      }
+    }
+
+    // Function to render the live calendar view
+    function renderCalendarView() {
+      const calendarView = document.getElementById('calendarView');
+      const currentDate = new Date(currentYear, currentMonth, 1);
+      const firstDay = new Date(currentYear, currentMonth, 1);
+      const lastDay = new Date(currentYear, currentMonth + 1, 0);
+
+      const monthName = firstDay.toLocaleString('default', { month: 'long' });
+      calendarView.innerHTML = `<h3>${monthName} ${currentYear}</h3>`;
+
+      const table = document.createElement('table');
+      table.innerHTML = `<thead><tr>
+                          <th>Sun</th>
+                          <th>Mon</th>
+                          <th>Tue</th>
+                          <th>Wed</th>
+                          <th>Thu</th>
+                          <th>Fri</th>
+                          <th>Sat</th>
+                        </tr></thead>
+                        <tbody></tbody>`;
+
+      const tbody = table.querySelector('tbody');
+      let row = document.createElement('tr');
+
+      for (let i = 0; i < firstDay.getDay(); i++) {
+        row.appendChild(document.createElement('td'));
+      }
+
+      for (let day = 1; day <= lastDay.getDate(); day++) {
+        const cell = document.createElement('td');
+        cell.textContent = day;
+        cell.addEventListener('click', function() {
+          showAppointmentsForDay(day);
+        });
+
+        if (day === new Date().getDate()) {
+          cell.classList.add('selected');
+        }
+
+        row.appendChild(cell);
+
+        if (row.children.length === 7) {
+          tbody.appendChild(row);
+          row = document.createElement('tr');
+        }
+      }
+
+      if (row.children.length > 0) {
+        tbody.appendChild(row);
+      }
+
+      calendarView.appendChild(table);
+    }
+
+    // Show appointments for the selected day
+    function showAppointmentsForDay(day) {
+      const dateString = `${currentYear}-${currentMonth + 1}-${day}`;
+      const filteredAppointments = appointments.filter(app => app.date === dateString);
+      const appointmentList = document.getElementById('appointmentList');
+      appointmentList.innerHTML = `<h3>Appointments for ${dateString}</h3>`;
+
+      if (filteredAppointments.length === 0) {
+        appointmentList.innerHTML += `<p>No appointments for this day.</p>`;
+      } else {
+        const list = document.createElement('ul');
+        filteredAppointments.forEach(appointment => {
+          const listItem = document.createElement('li');
+          listItem.innerHTML = `
+            <strong>${appointment.title}</strong>
+            <p><strong>Patient:</strong> ${appointment.patientName}</p>
+            <p><strong>Doctor:</strong> ${appointment.doctorName}</p>
+            <p><strong>Clinic:</strong> ${appointment.clinicType}</p>
+            <p>${appointment.description}</p>
+          `;
+          list.appendChild(listItem);
+        });
+        appointmentList.appendChild(list);
+      }
+    }
+
+    // Update the current time
+    function updateCurrentTime() {
+      const timeElement = document.getElementById('currentTime');
+      const currentTime = new Date().toLocaleTimeString();
+      timeElement.textContent = `Current Time: ${currentTime}`;
+    }
+
+    // Function to check if any appointment is due
+    function checkAppointments() {
+      const currentTime = new Date().toISOString();
+
+      appointments.forEach((appointment, index) => {
+        const appointmentTime = new Date(`${appointment.date}T${appointment.time}`).toISOString();
+
+        // Check if appointment is within the next minute
+        if (currentTime >= appointmentTime && currentTime < new Date(new Date(appointmentTime).getTime() + 60000).toISOString()) {
+          showNotification(`Appointment for ${appointment.patientName} is now!`);
+          showModal(`Patient: ${appointment.patientName}<br>Doctor: ${appointment.doctorName}<br>Clinic: ${appointment.clinicType}<br>Date: ${appointment.date} at ${appointment.time}`);
+          playSound();
+          
+          // Optional: Remove appointment after notification
+          appointments.splice(index, 1);
+          localStorage.setItem('appointments', JSON.stringify(appointments));
+          renderAppointmentList();
+        }
+      });
+    }
+
+    // Function to show a browser notification
+    function showNotification(message) {
+      if (Notification.permission === 'granted') {
+        new Notification('Hospital Appointment Alert', {
+          body: message,
+          icon: 'https://www.iconfinder.com/data/icons/healthcare-4/64/Doctor_Medicine_Healthcare_Hospital-256.png'
+        });
+      } else {
+        console.log("Notification permission not granted.");
+      }
+    }
+
+    // Function to show a modal
+    function showModal(content) {
+      const modal = document.getElementById('appointmentModal');
+      const modalContent = document.getElementById('modalContent');
+      modalContent.innerHTML = content;
+      modal.style.display = 'block';
+    }
+
+    // Close the modal
+    function closeModal() {
+      document.getElementById('appointmentModal').style.display = 'none';
+    }
+
+    // Play a ringtone sound
+    function playSound() {
+      const sound = document.getElementById('alarmSound');
+      sound.play();
+    }
+
+    // Function to delete an appointment
+    function deleteAppointment(index) {
+      appointments.splice(index, 1);
+      localStorage.setItem('appointments', JSON.stringify(appointments));
+      renderAppointmentList();
+    }
+
+    // Function to edit an appointment
+    function editAppointment(index) {
+      const appointment = appointments[index];
+      document.getElementById('title').value = appointment.title;
+      document.getElementById('date').value = appointment.date;
+      document.getElementById('time').value = appointment.time;
+      document.getElementById('patientName').value = appointment.patientName;
+      document.getElementById('doctorName').value = appointment.doctorName;
+      document.getElementById('clinicType').value = appointment.clinicType;
+      document.getElementById('description').value = appointment.description;
+
+      // Remove the appointment temporarily
+      appointments.splice(index, 1);
+      localStorage.setItem('appointments', JSON.stringify(appointments));
+      renderAppointmentList();
+    }
+
+    // Handle form submission
+    document.getElementById('appointmentForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      const title = document.getElementById('title').value;
+      const date = document.getElementById('date').value;
+      const time = document.getElementById('time').value;
+      const patientName = document.getElementById('patientName').value;
+      const doctorName = document.getElementById('doctorName').value;
+      const clinicType = document.getElementById('clinicType').value;
+      const description = document.getElementById('description').value;
+
+      const newAppointment = { title, date, time, patientName, doctorName, clinicType, description };
+
+      appointments.push(newAppointment);
+      localStorage.setItem('appointments', JSON.stringify(appointments));
+
+      // Reset form
+      document.getElementById('appointmentForm').reset();
+      
+      // Render updated lists
+      renderAppointmentList();
+      renderCalendarView();
+    });
+
+    // Initial render
+    renderAppointmentList();
+    renderCalendarView();
+    updateCurrentTime();
+
+    // Update time every second
+    setInterval(updateCurrentTime, 1000);
+
+    // Check appointments every minute
+    setInterval(checkAppointments, 60000); // Every 60 seconds
+  </script>
+</body>
+</html>
